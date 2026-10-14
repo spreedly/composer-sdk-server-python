@@ -1,2 +1,12 @@
 Spreedly Composer Python Server SDK
 Copyright 2025-2026 Spreedly, Inc.
+
+This SDK depends on the following packages at runtime. pip installs them
+alongside the SDK; they are not bundled with it. Full license texts are in
+THIRD-PARTY-LICENSES.
+
+- requests (Apache-2.0)
+- urllib3 (MIT)
+- idna (BSD-3-Clause)
+- charset-normalizer (MIT)
+- certifi (MPL-2.0)
