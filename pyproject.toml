@@ -34,7 +34,7 @@ dev = [
     "responses>=0.23.0",
     # Pinned exactly so a linter release never fails an unrelated PR.
     # Bump deliberately; Dependabot proposes these weekly.
-    "ruff==0.16.7",
+    "ruff==0.17.0",
     "mypy==2.3.1",
     "types-requests>=2.28.0",
 ]
