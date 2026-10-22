@@ -36,11 +36,13 @@ Check out the [Client SDK](https://npmjs.com/package/@dodgeball/trust-sdk-client
 
 ## Installation
 
+The package isn't on PyPI yet. Install it from GitHub:
+
 ```bash
-pip install spreedly-composer-sdk-server
+pip install git+https://github.com/spreedly/composer-sdk-server-python.git
 ```
 
-Or install from source:
+Or install from a local clone:
 
 ```bash
 git clone https://github.com/spreedly/composer-sdk-server-python.git
