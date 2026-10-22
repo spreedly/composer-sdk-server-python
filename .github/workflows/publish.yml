@@ -1,0 +1,160 @@
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Runs all dependency code (build backend, install, tests, audit) without
+  # id-token, so nothing here can request the OIDC token PyPI accepts for
+  # publishing.
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.check.outputs.name }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the main ancestry check can see main.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check tag, version and CHANGELOG.md
+        id: check
+        run: |
+          NAME="$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['name'])")"
+          VERSION="$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")"
+          if [[ "${GITHUB_REF_NAME}" != "v${VERSION}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}"
+            exit 1
+          fi
+          if ! grep -qxF "SDK_VERSION = \"${VERSION}\"" composer/constants.py; then
+            echo "composer/constants.py does not match pyproject.toml version ${VERSION}"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "Tagged commit ${GITHUB_SHA} is not on main"
+            exit 1
+          fi
+          HEADING="$(grep -m1 -E "^## ${VERSION//./\\.}( |$)" CHANGELOG.md || true)"
+          if [[ -z "${HEADING}" || "${HEADING,,}" == *unreleased* ]]; then
+            echo "CHANGELOG.md needs a released '## ${VERSION}' section"
+            exit 1
+          fi
+          awk -v v="${VERSION}" '/^## / { if (found) exit; if ($2 == v) { found = 1; next } } found' CHANGELOG.md > release-notes.md
+          echo "name=${NAME}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      # Builds before the dev install so test output can't end up in the sdist.
+      - name: Build
+        run: |
+          pip install build==1.6.1
+          python -m build
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Test
+        run: pytest
+
+      # The audit and SBOM read a venv holding only the built wheel and its
+      # runtime dependencies, so test and build tools aren't listed.
+      - name: Audit runtime dependencies and write SBOM
+        run: |
+          pip install pip-audit==2.10.1 cyclonedx-bom==7.5.0
+          RUNTIME="${RUNNER_TEMP}/runtime"
+          python -m venv --without-pip "${RUNTIME}"
+          pip --python "${RUNTIME}/bin/python" install dist/*.whl
+          pip-audit --path "$("${RUNTIME}/bin/python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
+          cyclonedx-py environment --pyproject pyproject.toml --mc-type library --output-format JSON --output-file sbom.cdx.json "${RUNTIME}/bin/python"
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum -- * > ../SHA256SUMS
+
+      # Scans the files customers receive. The hash pins the download; --redact
+      # keeps a found secret's value out of the public log while --verbose
+      # still shows where it is.
+      - name: Scan distributions for secrets
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          ARCHIVE="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${ARCHIVE}"
+          echo "${GITLEAKS_SHA256}  ${ARCHIVE}" | sha256sum -c -
+          tar -xzf "${ARCHIVE}" gitleaks
+          mkdir -p "${RUNNER_TEMP}/package/sdist" "${RUNNER_TEMP}/package/wheel"
+          tar -xzf dist/*.tar.gz -C "${RUNNER_TEMP}/package/sdist"
+          python -m zipfile -e dist/*.whl "${RUNNER_TEMP}/package/wheel"
+          ./gitleaks dir "${RUNNER_TEMP}/package" --redact --verbose
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: |
+            dist/
+            SHA256SUMS
+            sbom.cdx.json
+            release-notes.md
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Required reviewers and the v* tag rule live on this environment, and the
+    # PyPI trusted publisher is bound to it.
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NAME: ${{ needs.build.outputs.name }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+
+      - name: Verify checksums
+        working-directory: dist
+        run: sha256sum -c ../SHA256SUMS
+
+      - name: Check version is not already on PyPI
+        run: |
+          STATUS="$(curl -sS -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/${NAME}/${VERSION}/json")"
+          if [[ "${STATUS}" != "404" ]]; then
+            echo "Expected ${NAME} ${VERSION} to be missing from PyPI, got HTTP ${STATUS}"
+            exit 1
+          fi
+
+      # Uploads everything in dist/ with PEP 740 attestations.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --notes-file release-notes.md dist/* SHA256SUMS sbom.cdx.json
