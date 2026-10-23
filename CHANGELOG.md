@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased)
+## 1.0.0 (2026-10-23)
 
 First release as `spreedly-composer-sdk-server`. If you're upgrading from `dodgeball-server-sdk`, read **Changed** and **Removed**.
 
