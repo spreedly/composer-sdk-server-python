@@ -73,6 +73,9 @@ jobs:
       # The audit and SBOM read a venv holding only the built wheel and its
       # runtime dependencies, so test and build tools aren't listed.
       - name: Audit runtime dependencies and write SBOM
+        env:
+          NAME: ${{ steps.check.outputs.name }}
+          VERSION: ${{ steps.check.outputs.version }}
         run: |
           pip install pip-audit==2.10.1 cyclonedx-bom==7.5.0
           RUNTIME="${RUNNER_TEMP}/runtime"
@@ -80,6 +83,9 @@ jobs:
           pip --python "${RUNTIME}/bin/python" install dist/*.whl
           pip-audit --path "$("${RUNTIME}/bin/python" -c "import sysconfig; print(sysconfig.get_path('purelib'))")"
           cyclonedx-py environment --pyproject pyproject.toml --mc-type library --output-format JSON --output-file sbom.cdx.json "${RUNTIME}/bin/python"
+          # cyclonedx-py gives the root component no purl.
+          jq --arg purl "pkg:pypi/${NAME}@${VERSION}" '.metadata.component.purl = $purl' sbom.cdx.json > "${RUNNER_TEMP}/sbom.cdx.json"
+          mv "${RUNNER_TEMP}/sbom.cdx.json" sbom.cdx.json
 
       - name: Checksums
         working-directory: dist

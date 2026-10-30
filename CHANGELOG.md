@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 (2026-10-30)
+
+No changes to the SDK's code.
+
+### Changed
+- The README's Client SDK links point to `@spreedly/composer-sdk-client`.
+- The SBOM on the GitHub Release gives its root component the package's purl, `pkg:pypi/spreedly-composer-sdk-server@1.0.1`.
+
 ## 1.0.0 (2026-10-23)
 
 First release as `spreedly-composer-sdk-server`. If you're upgrading from `dodgeball-server-sdk`, read **Changed** and **Removed**.
