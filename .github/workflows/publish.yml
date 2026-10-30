@@ -21,7 +21,7 @@ jobs:
       name: ${{ steps.check.outputs.name }}
       version: ${{ steps.check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history so the main ancestry check can see main.
           fetch-depth: 0
