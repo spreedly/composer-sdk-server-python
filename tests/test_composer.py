@@ -1,10 +1,12 @@
 """Tests for Composer client."""
 
 import json
+from types import SimpleNamespace
 
 import pytest
 import responses
 
+import composer.composer as composer_module
 from composer.composer import Composer, Dodgeball
 from composer.constants import VerificationOutcome, VerificationStatus
 from composer.exceptions import (
@@ -376,6 +378,44 @@ def test_event():
 
     assert len(responses.calls) == 1
     assert responses.calls[0].request.url == "https://api.dodgeballhq.com/v1/track"
+
+
+@responses.activate
+def test_event_does_not_write_default_time_back_to_event(monkeypatch):
+    """A reused event gets a fresh default timestamp on each call."""
+    responses.add(
+        responses.POST,
+        "https://api.dodgeballhq.com/v1/track",
+        json={"success": True},
+        status=200,
+    )
+    clock = iter([1_000.0, 2_000.0])
+    monkeypatch.setattr(composer_module, "time", SimpleNamespace(time=lambda: next(clock)))
+
+    composer = Composer("test_secret")
+    event = TrackEvent(type="login", data={"userId": "user123"})
+    composer.event(event, session_id="sess123")
+    composer.event(event, session_id="sess123")
+
+    sent_times = [json.loads(call.request.body)["eventTime"] for call in responses.calls]
+    assert sent_times == [1_000_000, 2_000_000]
+    assert event.event_time is None
+
+
+@responses.activate
+def test_event_keeps_caller_event_time():
+    """An event_time set by the caller is sent unchanged."""
+    responses.add(
+        responses.POST,
+        "https://api.dodgeballhq.com/v1/track",
+        json={"success": True},
+        status=200,
+    )
+
+    composer = Composer("test_secret")
+    composer.event(TrackEvent(type="login", event_time=1_700_000_000_000), session_id="sess123")
+
+    assert json.loads(responses.calls[0].request.body)["eventTime"] == 1_700_000_000_000
 
 
 def test_event_missing_event(capsys):

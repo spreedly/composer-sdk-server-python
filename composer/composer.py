@@ -162,16 +162,16 @@ class Composer:
         if self.config.is_enabled is False:
             return
 
-        # Ensure event has a timestamp
-        if not event.event_time:
-            event.event_time = int(time.time() * 1000)
+        # Default the timestamp for this request only. Writing it back onto the caller's
+        # event would give every later call with the same object the first call's time.
+        event_time = event.event_time or int(time.time() * 1000)
 
         # Send event to API
         data = make_request(
             url=f"{construct_api_url(self.config.api_url, self.config.api_version)}track",
             method="POST",
             headers=construct_api_headers(self.secret_key, "", source_token, user_id, session_id),
-            body={"type": event.type, "data": event.data, "eventTime": event.event_time},
+            body={"type": event.type, "data": event.data, "eventTime": event_time},
             request_timeout_ms=self.config.request_timeout_ms,
         )
         # make_request returns only the body, so the HTTP status isn't available here.
