@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 (2026-11-06)
+
+No changes to the SDK's code.
+
+### Changed
+- The README's frontend example imports `Composer` from `@spreedly/composer-sdk-client`.
+
 ## 1.0.1 (2026-10-30)
 
 No changes to the SDK's code.
