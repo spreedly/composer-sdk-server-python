@@ -51,7 +51,7 @@ class RequestHeader:
 
 
 # Keep in sync with the version in pyproject.toml
-SDK_VERSION = "1.0.2"
+SDK_VERSION = "1.0.3"
 
 # API Configuration
 DEFAULT_API_URL = "https://api.dodgeballhq.com/"
