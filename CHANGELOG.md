@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.3 (2026-11-11)
+## 1.0.3 (2026-11-12)
 
 ### Fixed
 - `event()` leaves the `TrackEvent` you pass unchanged. When `event_time` is empty, each call sends the current time.
